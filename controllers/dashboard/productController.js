@@ -72,30 +72,38 @@ const add_product = async (req, res) => {
 };
 
 const get_products = async (req, res) => {
-    const { perPage, searchValue, page } = req.query;
+    const { perPage, searchValue, page, sellerId } = req.query;
     const skipPage = parseInt(perPage) * (parseInt(page) - 1);
     try {
+      let query = {}; 
+      if (searchValue) {
+        query.$text = { $search: searchValue };
+      }
+  
+      if (sellerId) {
+        query.sellerId = sellerId;
+      }
       if (searchValue && perPage && page) {
         const products = await productModel
-          .find({ $text: { $search: searchValue } })
+          .find(query)
           .skip(skipPage)
           .limit(parseInt(perPage))
           .sort({ createdAt: -1 });
         const totalProducts = await productModel
-          .find({ $text: { $search: searchValue } })
+          .find(query)
           .countDocuments();
         responseReturn(res, 200, { products, totalProducts });
       } else if (searchValue === " " && perPage && page) {
         const products = await productModel
-          .find({})
+          .find(query)
           .skip(skipPage)
           .limit(parseInt(perPage))
           .sort({ createdAt: -1 });
-        const totalProducts = await productModel.find({}).countDocuments();
+        const totalProducts = await productModel.find(query).countDocuments();
         responseReturn(res, 200, { products, totalProducts });
       } else {
         const products = await productModel
-          .find({})
+          .find(query)
           .skip(skipPage)
           .limit(perPage ? parseInt(perPage) : 1)
           .sort({ createdAt: -1 });

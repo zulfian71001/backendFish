@@ -39,6 +39,32 @@ const get_request_seller = async (req, res) => {
   }
 };
 
+const get_sellers = async (req, res) =>{
+const {searchValue, perPage, page} = req.query
+const skipPage = parseInt(perPage) * (parseInt(page) - 1);
+  try {
+    if (searchValue) {
+      const sellers = await sellerModel.find({}).skip(skipPage).limit(perPage).sort({ createdAt: -1 });
+      return responseReturn(res, 200, {
+        sellers: sellers,
+        totalSellers: totalSellers,
+      });
+    } else {
+      const sellers = await sellerModel.find({}).skip(skipPage).limit(perPage).sort({ createdAt: -1 });
+      const totalSellers = await sellerModel
+        .countDocuments();
+      console.log(sellers);
+      return responseReturn(res, 200, {
+        sellers: sellers,
+        totalSellers: totalSellers,
+      });
+    }
+  }
+catch(error){
+  return responseReturn(res,500, {error:error.message})
+}
+}
+
 const get_seller = async (req, res) => {
   const { sellerId } = req.params;
   try {
@@ -75,5 +101,6 @@ catch(error){
 module.exports = {
   get_request_seller,
   get_seller,
-  update_status_seller
+  update_status_seller,
+  get_sellers
 };

@@ -4,10 +4,12 @@ const sellerModel = require("../models/sellerModel");
 const { createToken } = require("../utils/tokenCreate");
 const responseReturn = require("../utils/response");
 const sellerCustomersModel = require("../models/chat/sellerCustomersModel");
+const customerSellersModel = require("../models/chat/customerSellersModel");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const fs = require("fs");
 const path = require("path");
+const customerModel = require("../models/customerModel");
 const upload = multer();
 const admin_login = async (req, res) => {
   const { email, password } = req.body;
@@ -60,6 +62,29 @@ const seller_login = async (req, res) => {
     return responseReturn(res, 500, { error: error.message });
   }
 };
+const customer_login = async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const customer = await customerModel.findOne({ email }).select("+password");
+    if (customer) {
+      const match = await bcrypt.compare(password, customer.password);
+      if (match) {
+        const token = createToken({ id: customer.id, role: customer.role });
+        res.cookie("accessToken", token, {
+          expires: new Date(Date.now() + 1000 * 60 * 60 * 24),
+        });
+        console.log(customer);
+        return responseReturn(res, 200, { token, message: "login berhasil" });
+      } else {
+        return responseReturn(res, 400, { error: "password anda salah" });
+      }
+    } else {
+      return responseReturn(res, 404, { error: "email tidak ditemukan" });
+    }
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+};
 const seller_register = async (req, res) => {
   const { name, email, password } = req.body;
   try {
@@ -92,6 +117,40 @@ const seller_register = async (req, res) => {
     return responseReturn(res, 500, { error: error.message });
   }
 };
+
+const customer_register = async (req, res) => {
+  const { name, email, password } = req.body;
+  try {
+    const getUser = await customerModel.findOne({ email });
+    if (getUser) {
+      return responseReturn(res, 403, { error: "email sudah terdaftar" });
+    } else {
+      const customer = await customerModel.create({
+        name,
+        email,
+        password: await bcrypt.hash(password, 10),
+        method: "",
+      });
+      await customerSellersModel.create({
+        myId: customer.id,
+      });
+      const token = createToken({
+        id: customer.id,
+        role: customer.role,
+      });
+      res.cookie("accessToken", token, {
+        expires: new Date(Date.now() + 1000 * 60 * 60 * 24),
+      });
+      responseReturn(res, 201, {
+        token,
+        message: "Akun customer berhasil dibuat",
+      });
+    }
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+};
+
 const getUser = async (req, res) => {
   const { id, role } = req;
   try {
@@ -102,7 +161,8 @@ const getUser = async (req, res) => {
       const seller = await sellerModel.findById(id);
       return responseReturn(res, 200, { userInfo: seller });
     } else {
-      console.log("user");
+      const customer = await customerModel.findById(id);
+      return responseReturn(res, 200, { userInfo: customer });
     }
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
@@ -184,6 +244,9 @@ module.exports = {
   getUser,
   seller_register,
   seller_login,
+  customer_login,
+  customer_register,
+  seller_register,
   upload_image_profile,
   add_info_profile
 };
