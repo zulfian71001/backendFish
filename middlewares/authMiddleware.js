@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 const authMidleware = async (req, res, next) => {
-  const { accessToken } = req.cookies;
+  const { accessToken } = req.cookies; 
   if (!accessToken) {
     return res.status(401).json({ error: "Silahkan login terlebih dahulu" });
   } else {

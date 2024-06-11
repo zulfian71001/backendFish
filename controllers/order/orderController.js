@@ -4,6 +4,10 @@ const customerOrder = require("../../models/customerOrder");
 const authOrderModel = require("../../models/authOrderModel");
 const responseReturn = require("../../utils/response");
 const moment = require("moment");
+const {
+  mongo: { ObjectId },
+} = require("mongoose");
+
 
 const paymentCheck = async (id)=>{
   try{
@@ -98,6 +102,55 @@ await cartModel.findByIdAndDelete(cartId[k])
   }
 };
 
+const get_orders = async (req, res) => {
+  const { customerId, status} = req.params;
+  try {
+    let orders=[]
+    if(status !== "all"){
+      orders = await customerOrder.find({ customerId: new ObjectId(customerId), delivery_status:status });
+    }else{
+      orders = await customerOrder.find({ customerId: new ObjectId(customerId) });
+    }
+    return responseReturn(res, 200, { orders });
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+}
+
+const get_customer_dashboard_data = async (req, res) => {
+  const { userId} = req.params
+  // console.log(userId)
+  try {
+  const recentOrders = await customerOrder.find({
+    customerId: new ObjectId(userId)
+  })
+  const totalOrders = await customerOrder.find({
+    customerId: new ObjectId(userId)
+  }).countDocuments()
+  const pendingOrder = await customerOrder.find({
+    customerId: new ObjectId(userId),
+    delivery_status: "pending"
+  }).countDocuments()
+  const cancelledOrder = await customerOrder.find({
+    customerId: new ObjectId(userId),
+    delivery_status: "cancelled"
+  }).countDocuments()
+  console.log(cancelledOrder)
+    return responseReturn(res, 200, { recentOrders, totalOrders, pendingOrder, cancelledOrder });
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+}
+
+const get_order = async (req, res) => {
+  const { orderId} = req.params;
+  try {
+      const order = await customerOrder.findById(orderId);
+    return responseReturn(res, 200, { order });
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+}
 
 
-module.exports = { place_order };
+module.exports = { place_order, get_orders, get_customer_dashboard_data, get_order };
