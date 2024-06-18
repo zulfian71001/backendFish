@@ -1,5 +1,5 @@
 const { Schema, model } = require("mongoose");
-const sellerSchema = new Schema(
+const sellerCustomerSchema = new Schema(
   {
     senderId: {
       type: String,
@@ -10,10 +10,6 @@ const sellerSchema = new Schema(
       required: true,
     },
     receiverId: {
-        type: String,
-        required: true,
-      },
-      receiverName: {
         type: String,
         required: true,
       },
@@ -29,4 +25,4 @@ const sellerSchema = new Schema(
   { timestamps: true }
 );
 
-module.exports = model("sellers", sellerSchema);
+module.exports = model("seller_customer_messages", sellerCustomerSchema);

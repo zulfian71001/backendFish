@@ -29,6 +29,10 @@ const customerOrderSchema = new Schema(
         type: String,
         required: true,
       },
+        customer_acceptance: {
+          type: String,
+          default: "unreceived",
+        },
       date: {
         type: String,
         required: true,

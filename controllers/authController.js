@@ -4,7 +4,6 @@ const sellerModel = require("../models/sellerModel");
 const { createToken } = require("../utils/tokenCreate");
 const responseReturn = require("../utils/response");
 const sellerCustomersModel = require("../models/chat/sellerCustomersModel");
-const customerSellersModel = require("../models/chat/customerSellersModel");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const fs = require("fs");
@@ -131,7 +130,7 @@ const customer_register = async (req, res) => {
         password: await bcrypt.hash(password, 10),
         method: "",
       });
-      await customerSellersModel.create({
+      await sellerCustomersModel.create({
         myId: customer.id,
       });
       const token = createToken({

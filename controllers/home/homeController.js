@@ -3,7 +3,8 @@ const productModel = require("../../models/productModel");
 const responseReturn = require("../../utils/response");
 const QueryProducts = require("../../utils/queryProducts");
 const reviewModel = require("../../models/reviewModel");
-const moment = require("moment");
+const moment = require('moment');
+require('moment/locale/id'); 
 const {
   mongo: { ObjectId },
 } = require("mongoose");
@@ -98,12 +99,14 @@ const search_products = async (req, res) => {
 const submit_review = async (req, res) => {
   const { productId, review, rating, name } = req.body;
   try {
+    moment.locale('id');
+    const tempDate = moment().format('LL');
     await reviewModel.create({
       productId,
       review,
       rating,
       name,
-      date: moment().format("LL"),
+      date: tempDate,
     });
 
     let rat = 0;

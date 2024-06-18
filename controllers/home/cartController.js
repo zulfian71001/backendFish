@@ -9,34 +9,41 @@ const {
 const add_to_cart = async (req, res) => {
   const { userId, productId, quantity } = req.body;
   try {
-    const product = await cartModel.findOne({
-      $and: [
-        {
-          userId: {
-            $eq: userId,
-          },
-        },
-        {
-          productId: {
-            $eq: productId,
-          },
-        },
-      ],
-    });
-    if (product) {
+    const product = await sellerModel.findById(productId);
+    if (userId == product.sellerId) {
       return responseReturn(res, 404, {
-        error: "produk sudah ditambahkan ke dalam cart",
+        error: "tidak bisa menambahkan produk sendiri ke dalam cart",
       });
     } else {
-      const product = await cartModel.create({
-        userId,
-        productId,
-        quantity,
+      const product = await cartModel.findOne({
+        $and: [
+          {
+            userId: {
+              $eq: userId,
+            },
+          },
+          {
+            productId: {
+              $eq: productId,
+            },
+          },
+        ],
       });
-      return responseReturn(res, 201, {
-        message: "berhasil menambahkan ke dalam cart",
-        product,
-      });
+      if (product) {
+        return responseReturn(res, 404, {
+          error: "produk sudah ditambahkan ke dalam cart",
+        });
+      } else {
+        const product = await cartModel.create({
+          userId,
+          productId,
+          quantity,
+        });
+        return responseReturn(res, 201, {
+          message: "berhasil menambahkan ke dalam cart",
+          product,
+        });
+      }
     }
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
@@ -65,14 +72,15 @@ const get_products_cart = async (req, res) => {
         },
       },
     ]);
-    let buy_item_product = 0
+    let buy_item_product = 0;
     let calculatePrice = 0;
     let total_cart_products = 0;
     const outOfStockProducts = cart_products.filter(
       (p) => p.products[0].stock < p.quantity
     );
     for (let i = 0; i < outOfStockProducts.length; i++) {
-      total_cart_products = total_cart_products + outOfStockProducts[i].quantity;
+      total_cart_products =
+        total_cart_products + outOfStockProducts[i].quantity;
     }
     const stockProduct = cart_products.filter(
       (p) => p.products[0].stock >= p.quantity
@@ -86,7 +94,9 @@ const get_products_cart = async (req, res) => {
     }
 
     let p = [];
-    let unique = [...new Set(stockProduct.map(p => p.products[0].sellerId.toString()))];
+    let unique = [
+      ...new Set(stockProduct.map((p) => p.products[0].sellerId.toString())),
+    ];
     for (let i = 0; i < unique.length; i++) {
       let price = 0;
       let products = []; // Initialize products array for each seller
@@ -105,7 +115,7 @@ const get_products_cart = async (req, res) => {
           });
         }
       }
-      
+
       // Add seller info, price, and products to cart object p
       p.push({
         sellerId: unique[i],
@@ -123,14 +133,13 @@ const get_products_cart = async (req, res) => {
     // console.log(calculatePrice);
     // console.log(total_cart_products)
     responseReturn(res, 200, {
-      userId, 
+      userId,
       cart_products: p,
       price: calculatePrice,
       total_cart_products,
       shipping_fee: 10000 * p.length,
       outOfStockProducts,
-      buy_item_product
-
+      buy_item_product,
     });
   } catch (error) {
     console.log(error);
@@ -138,53 +147,53 @@ const get_products_cart = async (req, res) => {
   }
 };
 const delete_products_cart = async (req, res) => {
- 
   const { cartId } = req.params;
 
-  try{
-    await cartModel.findByIdAndDelete(cartId)
-    responseReturn(res,200, {message:"berhasil dihapus"})
-  }
-  catch (error) {
+  try {
+    await cartModel.findByIdAndDelete(cartId);
+    responseReturn(res, 200, { message: "berhasil dihapus" });
+  } catch (error) {
     console.log(error);
     responseReturn(res, 500, { error: error.message });
   }
 };
 
 const quantity_inc = async (req, res) => {
- 
   const { cartId } = req.params;
 
-  try{
-    const product = await cartModel.findById(cartId)
-    const {quantity} = product
-    await cartModel.findByIdAndUpdate(cartId,{
-      quantity:quantity + 1
-    })
-    responseReturn(res,200, {message:"berhasil menambah"})
-  }
-  catch (error) {
+  try {
+    const product = await cartModel.findById(cartId);
+    const { quantity } = product;
+    await cartModel.findByIdAndUpdate(cartId, {
+      quantity: quantity + 1,
+    });
+    responseReturn(res, 200, { message: "berhasil menambah" });
+  } catch (error) {
     console.log(error);
     responseReturn(res, 500, { error: error.message });
   }
 };
 
 const quantity_dec = async (req, res) => {
- 
   const { cartId } = req.params;
 
-  try{
-    const product = await cartModel.findById(cartId)
-    const {quantity} = product
-    await cartModel.findByIdAndUpdate(cartId,{
-      quantity:quantity - 1
-    })
-    responseReturn(res,200, {message:"berhasil mengurangi"})
-  }
-  catch (error) {
+  try {
+    const product = await cartModel.findById(cartId);
+    const { quantity } = product;
+    await cartModel.findByIdAndUpdate(cartId, {
+      quantity: quantity - 1,
+    });
+    responseReturn(res, 200, { message: "berhasil mengurangi" });
+  } catch (error) {
     console.log(error);
     responseReturn(res, 500, { error: error.message });
   }
 };
 
-module.exports = { add_to_cart, get_products_cart, delete_products_cart, quantity_inc, quantity_dec };
+module.exports = {
+  add_to_cart,
+  get_products_cart,
+  delete_products_cart,
+  quantity_inc,
+  quantity_dec,
+};
