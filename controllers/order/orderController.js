@@ -485,7 +485,7 @@ const update_status_customer_acceptance = async (req, res) => {
     const noGopay = seller.shopInfo.noGopay;
 
     const apiClient = new midtransClient.CoreApi({
-      isProduction: false,
+      isProduction: true,
       serverKey: process.env.MIDTRANS_SERVER_KEY,
       clientKey: process.env.MIDTRANS_CLIENT_KEY,
     });
