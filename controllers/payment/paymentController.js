@@ -3,30 +3,50 @@ const customerOrder = require("../../models/customerOrder.js");
 const midtransClient = require("midtrans-client");
 const crypto = require("crypto");
 const process_transaction = async (req, res) => {
-  const { id } = req.body;
+  const { id, paymentMethod } = req.body;
   try {
     const orderData = await customerOrder.findById(id);
     console.log(orderData);
+
     const snap = new midtransClient.Snap({
       isProduction: false,
       serverKey: process.env.MIDTRANS_SERVER_KEY,
       clientKey: process.env.MIDTRANS_CLIENT_KEY,
     });
-    const authString = btoa(`${process.env.MIDTRANS_SERVER_KEY}:`);
+
+    let taxAmount = 0;
+
+    if (paymentMethod === "bri_va" || paymentMethod === "bni_va" || paymentMethod === "bca_va") {
+      taxAmount = 9000;
+    } else if (paymentMethod === "gopay") {
+      taxAmount = orderData.price * 0.02 + 2500;
+    }
+
     const payload = {
       transaction_details: {
         order_id: orderData._id,
-        gross_amount: orderData.price,
+        gross_amount: orderData.price + taxAmount,
       },
-      enabled_payments: [
-        "bca_klikbca",
-        "bca_klikpay",
-        "bri_epay",
-        "bca_va",
-        "bni_va",
+      item_details: [
+        {
+          id: orderData._id,
+          price: orderData.price,
+          quantity: 1,
+          name: "Order Payment",
+        },
+        {
+          id: "tax",
+          price: taxAmount,
+          quantity: 1,
+          name: "Tax",
+        },
+      ],
+      enabled_payments: [,
         "bri_va",
+        "gopay",
       ],
     };
+
     const token = await snap.createTransactionToken(payload);
     console.log(token);
     responseReturn(res, 201, { token });
@@ -48,30 +68,42 @@ const statusMidtransResponse = async (orderId, data) => {
       message: "invalid signature key",
     };
   }
-  let responseData = null
-  let transactionStatus = data.transaction_status
-  let fraudStatus = data.fraud_status
-  if (transactionStatus == 'capture'){
-    if (fraudStatus == 'accept'){
-            const transaction = await transactionService.findByIdAndUpdate(orderId,{payment_status:'paid', payment_method:data.payment_type})
-            responseData = transaction
-        }
-    } else if (transactionStatus == 'settlement'){
-        const transaction = await transactionService.findByIdAndUpdate(orderId,{payment_status:'paid', payment_method:data.payment_type})
-            responseData = transaction
-    } else if (transactionStatus == 'cancel' ||
-      transactionStatus == 'deny' ||
-      transactionStatus == 'expire'){
-        const transaction = await transactionService.findByIdAndUpdate(orderId,{payment_status:'cancelled'})
-        responseData = transaction
-    } else if (transactionStatus == 'pending'){
-        const transaction = await transactionService.findByIdAndUpdate(orderId,{payment_status:'unpaid'})
-        responseData = transaction
+  let responseData = null;
+  let transactionStatus = data.transaction_status;
+  let fraudStatus = data.fraud_status;
+  if (transactionStatus == "capture") {
+    if (fraudStatus == "accept") {
+      const transaction = await transactionService.findByIdAndUpdate(orderId, {
+        payment_status: "paid",
+        payment_method: data.payment_type,
+      });
+      responseData = transaction;
     }
-    return {
-        status:"success",
-        data:responseData
-    }
+  } else if (transactionStatus == "settlement") {
+    const transaction = await transactionService.findByIdAndUpdate(orderId, {
+      payment_status: "paid",
+      payment_method: data.payment_type,
+    });
+    responseData = transaction;
+  } else if (
+    transactionStatus == "cancel" ||
+    transactionStatus == "deny" ||
+    transactionStatus == "expire"
+  ) {
+    const transaction = await transactionService.findByIdAndUpdate(orderId, {
+      payment_status: "cancelled",
+    });
+    responseData = transaction;
+  } else if (transactionStatus == "pending") {
+    const transaction = await transactionService.findByIdAndUpdate(orderId, {
+      payment_status: "unpaid",
+    });
+    responseData = transaction;
+  }
+  return {
+    status: "success",
+    data: responseData,
+  };
 };
 
 const notification_transaction = async (req, res) => {
@@ -79,8 +111,8 @@ const notification_transaction = async (req, res) => {
   const transaction = await customerOrder.findById(data.orderId);
   if (transaction) {
     statusMidtransResponse(orderId, data).then((data) => {
-        console.log(data)
-    })
+      console.log(data);
+    });
   }
   responseReturn(res, 200, { message: "ok", status: "success" });
 };

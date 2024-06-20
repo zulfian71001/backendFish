@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const adminModel = require("../models/adminModel");
 const sellerModel = require("../models/sellerModel");
+const mapModel = require("../models/mapModel");
 const { createToken } = require("../utils/tokenCreate");
 const responseReturn = require("../utils/response");
 const sellerCustomersModel = require("../models/chat/sellerCustomersModel");
@@ -238,6 +239,99 @@ const {id} = req
     responseReturn(res,500, {error:error.message})
   }
 }
+
+const update_info_profile_seller = async (req, res) =>{
+  const {id} = req
+    const {name,email} = req.body
+    try{
+      await sellerModel.findByIdAndUpdate(id, {
+       name,
+       email
+      })
+      const userInfo = await sellerModel.findById(id)
+      responseReturn(res, 201, {userInfo, message: "data profile sukses di update"})
+    }
+  
+    catch(error){
+      console.log(error.message)
+      responseReturn(res,500, {error:error.message})
+    }
+  }
+
+  const update_info_profile_store = async (req, res) =>{
+    const {id} = req
+    const {shopName,province, city, district,subDistrict, spesificAddress, noWa, noRek, noGopay} = req.body
+      try{
+        await sellerModel.findByIdAndUpdate(id, {
+         shopInfo:{
+          shopName,province, city, district,subDistrict, spesificAddress, noWa, noRek, noGopay
+         }
+        })
+        const userInfo = await sellerModel.findById(id)
+        responseReturn(res, 201, {userInfo, message: "data profile sukses di update"})
+      }
+    
+      catch(error){
+        console.log(error.message)
+        responseReturn(res,500, {error:error.message})
+      }
+    }
+  
+
+  const change_password_seller = async (req, res) =>{
+    const {id} = req
+      const {email, oldPassword, newPassword} = req.body
+      try{
+        const seller = await sellerModel.findById(id).select("+password")
+        if (!seller) {
+          return responseReturn(res, 404, { error: "Seller tidak ditemukan" });
+        }
+        if(email !== seller.email){
+          
+          return responseReturn(res, 400, {error: "email tidak sesuai "})
+        }
+        const match = await bcrypt.compare(oldPassword, seller.password);
+        if(!match){
+          return responseReturn(res, 400, {error: "password lama tidak sesuai"})
+        }
+ 
+        const hashedPassword = await bcrypt.hash(newPassword, 10)
+        await sellerModel.findByIdAndUpdate(id, {
+         password: hashedPassword
+        })
+        responseReturn(res, 201, { message: "password berhasil diganti"})
+      }
+      catch(error){
+        responseReturn(res,500, {error:error.message})
+      }
+    }
+
+    const change_password_user = async (req, res) =>{
+      const {id} = req
+        const {oldPassword, newPassword} = req.body
+        try{
+          const customer= await customerModel.findById(id).select("+password")
+          if (!customer) {
+            return responseReturn(res, 404, { error: "customer tidak ditemukan" });
+          }
+          const match = await bcrypt.compare(oldPassword, customer.password);
+          if(!match){
+            return responseReturn(res, 400, {error: "password lama tidak sesuai"})
+          }
+   
+          const hashedPassword = await bcrypt.hash(newPassword, 10)
+          await customerModel.findByIdAndUpdate(id, {
+           password: hashedPassword
+          })
+          responseReturn(res, 201, { message: "password berhasil diganti"})
+        }
+        catch(error){
+          console.log(error.message)
+          responseReturn(res,500, {error:error.message})
+        }
+      }
+
+
 module.exports = {
   admin_login,
   getUser,
@@ -247,5 +341,9 @@ module.exports = {
   customer_register,
   seller_register,
   upload_image_profile,
-  add_info_profile
+  add_info_profile,
+  update_info_profile_seller,
+  change_password_seller,
+  change_password_user,
+  update_info_profile_store
 };

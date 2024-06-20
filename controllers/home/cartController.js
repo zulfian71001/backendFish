@@ -9,7 +9,7 @@ const {
 const add_to_cart = async (req, res) => {
   const { userId, productId, quantity } = req.body;
   try {
-    const product = await sellerModel.findById(productId);
+    const product = await productModel.findById(productId);
     if (userId == product.sellerId) {
       return responseReturn(res, 404, {
         error: "tidak bisa menambahkan produk sendiri ke dalam cart",

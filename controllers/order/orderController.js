@@ -8,30 +8,51 @@ require("moment/locale/id");
 const {
   mongo: { ObjectId },
 } = require("mongoose");
+const ProductModel = require("../../models/productModel");
 
 const paymentCheck = async (id) => {
   try {
     const order = await customerOrder.findById(id);
-    if (order.payment_method == "transfer") {
-      if (order.payment_status === "unpaid") {
-        await customerOrder.findByIdAndUpdate(id, {
-          delivery_status: "cancelled",
-        });
-        await authOrderModel.updateMany(
-          {
-            orderId: id,
-          },
-          {
-            delivery_status: "cancelled",
-          }
-        );
-      }
+
+    if (!order) {
+      throw new Error(`Order with id ${id} not found.`);
     }
-    return true;
+
+    if (order.payment_method === "transfer" && order.payment_status === "unpaid") {
+      // Restore stock for each product in the cancelled order
+      for (let i = 0; i < order.products.length; i++) {
+        const productInfo = order.products[i];
+        const productId = productInfo._id;
+        const quantity = productInfo.quantity;
+
+        const product = await ProductModel.findById(productId);
+        if (product) {
+          product.stock += quantity;
+          await product.save();
+        } else {
+          throw new Error(`Product with id ${productId} not found.`);
+        }
+      }
+
+      await customerOrder.findByIdAndUpdate(id, {
+        delivery_status: "cancelled",
+      });
+
+      await authOrderModel.updateMany(
+        { orderId: id },
+        { delivery_status: "cancelled" }
+      );
+
+      console.log(`Order ${id} has been cancelled and stock has been restored.`);
+    }
+
+    return true; // Return true indicating successful check (not cancellation)
   } catch (error) {
-    console.log(error.message);
+    console.error(`Error checking payment for order ${id}: ${error.message}`);
+    throw error;
   }
 };
+
 const place_order = async (req, res) => {
   const { price, products, shipping_fee, shippingInfo, userId } = req.body;
   let authorOrderData = [];
@@ -40,19 +61,27 @@ const place_order = async (req, res) => {
   moment.locale("id");
   const tempDate = moment().format("LLL");
   let customerOrderProduct = [];
-  for (let i = 0; i < products.length; i++) {
-    const pro = products[i].products;
-    for (let j = 0; j < pro.length; j++) {
-      let tempCusPro = pro[j].productInfo;
-      tempCusPro.quantity = pro[j].quantity;
-      customerOrderProduct.push(tempCusPro);
-      if (pro[j]._id) {
-        cartId.push(pro[j]._id);
-      }
-    }
-  }
 
   try {
+    for (let i = 0; i < products.length; i++) {
+      const pro = products[i].products;
+      for (let j = 0; j < pro.length; j++) {
+        let tempCusPro = pro[j].productInfo;
+        tempCusPro.quantity = pro[j].quantity;
+        customerOrderProduct.push(tempCusPro);
+        if (pro[j]._id) {
+          cartId.push(pro[j]._id);
+        }
+
+        // Decrease stock
+        const product = await ProductModel.findById(tempCusPro._id);
+        if (product) {
+          product.stock -= pro[j].quantity;
+          await product.save();
+        }
+      }
+    }
+
     const order = await customerOrder.create({
       customerId: userId,
       shippingInfo,
@@ -63,6 +92,7 @@ const place_order = async (req, res) => {
       payment_status: "unpaid",
       date: tempDate,
     });
+
     for (let i = 0; i < products.length; i++) {
       const pro = products[i].products;
       const pri = products[i].price;
@@ -86,22 +116,27 @@ const place_order = async (req, res) => {
         date: tempDate,
       });
     }
+
     await authOrderModel.insertMany(authorOrderData);
     for (let k = 0; k < cartId.length; k++) {
       await cartModel.findByIdAndDelete(cartId[k]);
     }
+
     setTimeout(() => {
       paymentCheck(order.id);
     }, 600000);
+
     return responseReturn(res, 201, {
       message: "Order berhasil dibuat",
       orderId: order.id,
       order,
     });
+
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
   }
 };
+
 
 const get_orders = async (req, res) => {
   const { perPage, page } = req.query;
@@ -139,18 +174,57 @@ const get_orders = async (req, res) => {
 const get_admin_orders = async (req, res) => {
   const { perPage, searchValue, page } = req.query;
   const skipPage = parseInt(perPage) * (parseInt(page) - 1);
+  let matchStage = {};
   try {
-    if (searchValue && perPage && page) {
+    if (searchValue && searchValue.trim() !== "") {
+      const searchRegex = new RegExp(searchValue, 'i'); 
+      matchStage = {
+        $match: {
+          $or: [
+            { delivery_status: searchRegex },
+            { orderId: searchRegex },
+            { productDetails: searchRegex },
+          ],
+        },
+      };
       const orders = await customerOrder
-        .find({ $text: { $search: searchValue } })
-        .skip(skipPage)
-        .limit(parseInt(perPage))
-        .sort({ createdAt: -1 });
-      const totalOrders = await customerOrder
-        .find({ $text: { $search: searchValue } })
-        .countDocuments();
-      responseReturn(res, 200, { orders, totalOrders });
-    } else if (searchValue === " " && perPage && page) {
+      .aggregate([
+        matchStage,
+        {
+          $lookup: {
+            from: "authorders",
+            localField: "_id",
+            foreignField: "orderId",
+            as: "suborder",
+          },
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+        {
+          $skip: skipPage,
+        },
+        {
+          $limit: parseInt(perPage),
+        },
+      ]);
+
+    const totalOrders = await customerOrder
+      .aggregate([
+        matchStage,
+        {
+          $lookup: {
+            from: "authorders",
+            localField: "_id",
+            foreignField: "orderId",
+            as: "suborder",
+          },
+        },
+      ]);
+
+    responseReturn(res, 200, { orders, totalOrders: totalOrders.length });
+    }
+    else if (searchValue === " " && perPage && page) {
       const orders = await customerOrder
         .aggregate([
           {
@@ -258,7 +332,7 @@ const get_customer_dashboard_data = async (req, res) => {
   try {
     const recentOrders = await customerOrder.find({
       customerId: new ObjectId(userId),
-    });
+    }).limit(3).sort({ createdAt: -1 });
     const totalOrders = await customerOrder
       .find({
         customerId: new ObjectId(userId),
@@ -276,7 +350,67 @@ const get_customer_dashboard_data = async (req, res) => {
         delivery_status: "cancelled",
       })
       .countDocuments();
-    console.log(cancelledOrder);
+    return responseReturn(res, 200, {
+      recentOrders,
+      totalOrders,
+      pendingOrder,
+      cancelledOrder,
+    });
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+};
+
+const get_admin_dashboard_data = async (req, res) => {
+  try {
+    const recentOrders = await customerOrder.find({}).limit(3).sort({ createdAt: -1 });
+    const totalOrders = await customerOrder
+      .find({})
+      .countDocuments();
+    const pendingOrder = await customerOrder
+      .find({
+        delivery_status: "pending",
+      })
+      .countDocuments();
+    const cancelledOrder = await customerOrder
+      .find({
+        delivery_status: "cancelled",
+      })
+      .countDocuments();
+    return responseReturn(res, 200, {
+      recentOrders,
+      totalOrders,
+      pendingOrder,
+      cancelledOrder,
+    });
+  } catch (error) {
+    return responseReturn(res, 500, { error: error.message });
+  }
+};
+
+const get_seller_dashboard_data = async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const recentOrders = await authOrderModel.find({
+      sellerId: new ObjectId(userId),
+    }).limit(3).sort({ createdAt: -1 });
+    const totalOrders = await authOrderModel
+      .find({
+        sellerId: new ObjectId(userId),
+      })
+      .countDocuments();
+    const pendingOrder = await authOrderModel
+      .find({
+        sellerId: new ObjectId(userId),
+        delivery_status: "pending",
+      })
+      .countDocuments();
+    const cancelledOrder = await authOrderModel
+      .find({
+        sellerId: new ObjectId(userId),
+        delivery_status: "cancelled",
+      })
+      .countDocuments();
     return responseReturn(res, 200, {
       recentOrders,
       totalOrders,
@@ -402,5 +536,7 @@ module.exports = {
   get_seller_orders,
   get_seller_order,
   seller_order_status_update,
-  update_status_customer_acceptance
+  update_status_customer_acceptance,
+  get_admin_dashboard_data,
+  get_seller_dashboard_data
 };
