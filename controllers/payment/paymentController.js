@@ -6,7 +6,10 @@ const process_transaction = async (req, res) => {
   const { id, paymentMethod } = req.body;
   try {
     const orderData = await customerOrder.findById(id);
-    console.log(orderData);
+    if (!orderData) {
+      return responseReturn(res, 404, { error: 'Order not found' });
+    }
+
 
     const snap = new midtransClient.Snap({
       isProduction: false,
@@ -16,44 +19,46 @@ const process_transaction = async (req, res) => {
 
     let taxAmount = 0;
 
-    if (paymentMethod === "bri_va" || paymentMethod === "bni_va" || paymentMethod === "bca_va") {
+    if (paymentMethod === 'bri_va' || paymentMethod === 'bni_va' || paymentMethod === 'bca_va') {
       taxAmount = 9000;
-    } else if (paymentMethod === "gopay") {
-      taxAmount = orderData.price * 0.02 + 2500;
+    } else if (paymentMethod === 'gopay') {
+      taxAmount = Math.ceil(orderData.price * 0.02 + 2500);
     }
 
     const payload = {
       transaction_details: {
-        order_id: orderData._id,
+        order_id: orderData._id.toString(),
         gross_amount: orderData.price + taxAmount,
       },
       item_details: [
         {
-          id: orderData._id,
+          id: orderData._id.toString(),
           price: orderData.price,
           quantity: 1,
-          name: "Order Payment",
+          name: 'Order Payment',
         },
         {
-          id: "tax",
+          id: 'tax',
           price: taxAmount,
           quantity: 1,
-          name: "Tax",
+          name: 'Tax',
         },
       ],
-      enabled_payments: [,
-        "bri_va",
-        "gopay",
+      enabled_payments: [
+        'bri_va',
+        'bni_va',
+        'bca_va',
+        'gopay',
       ],
     };
 
     const token = await snap.createTransactionToken(payload);
-    console.log(token);
     responseReturn(res, 201, { token });
   } catch (error) {
     responseReturn(res, 500, { error: error.message });
   }
 };
+
 
 const statusMidtransResponse = async (orderId, data) => {
   const hash = crypto
@@ -82,7 +87,6 @@ const statusMidtransResponse = async (orderId, data) => {
   } else if (transactionStatus == "settlement") {
     const transaction = await transactionService.findByIdAndUpdate(orderId, {
       payment_status: "paid",
-      payment_method: data.payment_type,
     });
     responseData = transaction;
   } else if (

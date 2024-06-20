@@ -18,7 +18,10 @@ const paymentCheck = async (id) => {
       throw new Error(`Order with id ${id} not found.`);
     }
 
-    if (order.payment_method === "transfer" && order.payment_status === "unpaid") {
+    if (
+      order.payment_method === "transfer" &&
+      order.payment_status === "unpaid"
+    ) {
       // Restore stock for each product in the cancelled order
       for (let i = 0; i < order.products.length; i++) {
         const productInfo = order.products[i];
@@ -43,7 +46,9 @@ const paymentCheck = async (id) => {
         { delivery_status: "cancelled" }
       );
 
-      console.log(`Order ${id} has been cancelled and stock has been restored.`);
+      console.log(
+        `Order ${id} has been cancelled and stock has been restored.`
+      );
     }
 
     return true; // Return true indicating successful check (not cancellation)
@@ -131,12 +136,10 @@ const place_order = async (req, res) => {
       orderId: order.id,
       order,
     });
-
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
   }
 };
-
 
 const get_orders = async (req, res) => {
   const { perPage, page } = req.query;
@@ -146,12 +149,12 @@ const get_orders = async (req, res) => {
     let orders = [];
     if (perPage && page) {
       orders = await customerOrder
-        .find({ customerId: new ObjectId(customerId)})
+        .find({ customerId: new ObjectId(customerId) })
         .skip(skipPage)
         .limit(parseInt(perPage))
         .sort({ createdAt: -1 });
       totalOrders = await customerOrder
-        .find({ customerId: new ObjectId(customerId)})
+        .find({ customerId: new ObjectId(customerId) })
         .countDocuments();
 
       if (status !== "all") {
@@ -160,10 +163,12 @@ const get_orders = async (req, res) => {
           delivery_status: status,
         });
         totalOrders = await customerOrder
-        .find({ customerId: new ObjectId(customerId),
-          delivery_status: status})
-        .countDocuments();
-      } 
+          .find({
+            customerId: new ObjectId(customerId),
+            delivery_status: status,
+          })
+          .countDocuments();
+      }
     }
     return responseReturn(res, 200, { orders, totalOrders });
   } catch (error) {
@@ -177,7 +182,7 @@ const get_admin_orders = async (req, res) => {
   let matchStage = {};
   try {
     if (searchValue && searchValue.trim() !== "") {
-      const searchRegex = new RegExp(searchValue, 'i'); 
+      const searchRegex = new RegExp(searchValue, "i");
       matchStage = {
         $match: {
           $or: [
@@ -187,8 +192,7 @@ const get_admin_orders = async (req, res) => {
           ],
         },
       };
-      const orders = await customerOrder
-      .aggregate([
+      const orders = await customerOrder.aggregate([
         matchStage,
         {
           $lookup: {
@@ -209,8 +213,7 @@ const get_admin_orders = async (req, res) => {
         },
       ]);
 
-    const totalOrders = await customerOrder
-      .aggregate([
+      const totalOrders = await customerOrder.aggregate([
         matchStage,
         {
           $lookup: {
@@ -222,9 +225,8 @@ const get_admin_orders = async (req, res) => {
         },
       ]);
 
-    responseReturn(res, 200, { orders, totalOrders: totalOrders.length });
-    }
-    else if (searchValue === " " && perPage && page) {
+      responseReturn(res, 200, { orders, totalOrders: totalOrders.length });
+    } else if (searchValue === " " && perPage && page) {
       const orders = await customerOrder
         .aggregate([
           {
@@ -330,9 +332,12 @@ const get_seller_orders = async (req, res) => {
 const get_customer_dashboard_data = async (req, res) => {
   const { userId } = req.params;
   try {
-    const recentOrders = await customerOrder.find({
-      customerId: new ObjectId(userId),
-    }).limit(3).sort({ createdAt: -1 });
+    const recentOrders = await customerOrder
+      .find({
+        customerId: new ObjectId(userId),
+      })
+      .limit(3)
+      .sort({ createdAt: -1 });
     const totalOrders = await customerOrder
       .find({
         customerId: new ObjectId(userId),
@@ -363,10 +368,11 @@ const get_customer_dashboard_data = async (req, res) => {
 
 const get_admin_dashboard_data = async (req, res) => {
   try {
-    const recentOrders = await customerOrder.find({}).limit(3).sort({ createdAt: -1 });
-    const totalOrders = await customerOrder
+    const recentOrders = await customerOrder
       .find({})
-      .countDocuments();
+      .limit(3)
+      .sort({ createdAt: -1 });
+    const totalOrders = await customerOrder.find({}).countDocuments();
     const pendingOrder = await customerOrder
       .find({
         delivery_status: "pending",
@@ -391,9 +397,12 @@ const get_admin_dashboard_data = async (req, res) => {
 const get_seller_dashboard_data = async (req, res) => {
   const { userId } = req.params;
   try {
-    const recentOrders = await authOrderModel.find({
-      sellerId: new ObjectId(userId),
-    }).limit(3).sort({ createdAt: -1 });
+    const recentOrders = await authOrderModel
+      .find({
+        sellerId: new ObjectId(userId),
+      })
+      .limit(3)
+      .sort({ createdAt: -1 });
     const totalOrders = await authOrderModel
       .find({
         sellerId: new ObjectId(userId),
@@ -432,22 +441,73 @@ const get_order = async (req, res) => {
   }
 };
 
+const midtransClient = require("midtrans-client");
+
 const update_status_customer_acceptance = async (req, res) => {
   const { orderId } = req.params;
   const { customer_acceptance } = req.body;
   try {
-    const order = await customerOrder.findByIdAndUpdate(orderId, {
-      customer_acceptance: customer_acceptance,
-    });
-    const sellerOrder = await authOrderModel.find({
-      orderId
-    });
-    const authordersId = sellerOrder.map(order => order._id);
-    const updateSellerOrder = await authOrderModel.findByIdAndUpdate(authordersId, {
-      customer_acceptance: customer_acceptance,
-    });
+    // Update customer acceptance status in customerOrder
+    const order = await customerOrder.findByIdAndUpdate(
+      orderId,
+      {
+        customer_acceptance: customer_acceptance,
+      },
+      { new: true }
+    );
+
+    if (!order) {
+      return responseReturn(res, 404, { message: "Order not found" });
+    }
+
+    const sellerOrder = await authOrderModel.findOne({ orderId });
+
+    if (!sellerOrder) {
+      return responseReturn(res, 404, { message: "Seller order not found" });
+    }
+
+    const updateSellerOrder = await authOrderModel.findByIdAndUpdate(
+      sellerOrder._id,
+      {
+        customer_acceptance: customer_acceptance,
+      },
+      { new: true }
+    );
+
     console.log(updateSellerOrder);
-    return responseReturn(res, 200, { message: "status berhasil diperbarui" });
+
+    const seller = await userInfo.findById(sellerOrder.sellerId); // Assuming sellerId is in sellerOrder
+    if (!seller || !seller.shopInfo.noGopay) {
+      return responseReturn(res, 404, {
+        message: "Seller or GoPay number not found",
+      });
+    }
+    const noGopay = seller.shopInfo.noGopay;
+
+    const apiClient = new midtransClient.CoreApi({
+      isProduction: false,
+      serverKey: process.env.MIDTRANS_SERVER_KEY,
+      clientKey: process.env.MIDTRANS_CLIENT_KEY,
+    });
+
+    // Disbursement payload
+    const disbursementPayload = {
+      payment_type: "gopay",
+      gopay: {
+        transaction_type: "transfer",
+        amount: order.price, // Assuming order.price is the amount to be transferred
+        phone_number: noGopay,
+      },
+    };
+
+    // Create a disbursement transaction
+    const disbursementResponse = await apiClient.charge(disbursementPayload);
+    console.log(disbursementResponse);
+
+    return responseReturn(res, 200, {
+      message: "Status updated and funds transferred successfully",
+      disbursementResponse,
+    });
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
   }
@@ -489,16 +549,19 @@ const admin_order_status_update = async (req, res) => {
   const { orderId } = req.params;
   const { status, payment } = req.body;
   try {
-    const tempData = await authOrderModel.findById(orderId)
-    const orderIdCustomer = tempData.map(order => order.orderId);
+    const tempData = await authOrderModel.findById(orderId);
+    const orderIdCustomer = tempData.map((order) => order.orderId);
     const order = await authOrderModel.findByIdAndUpdate(orderId, {
       delivery_status: status,
       payment_status: payment,
     });
-    const customerOrderUpdate = await customerOrder.findByIdAndUpdate(orderIdCustomer, {
-      delivery_status: status,
-      payment_status: payment,
-    });
+    const customerOrderUpdate = await customerOrder.findByIdAndUpdate(
+      orderIdCustomer,
+      {
+        delivery_status: status,
+        payment_status: payment,
+      }
+    );
     return responseReturn(res, 200, { message: "status berhasil diperbarui" });
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
@@ -508,17 +571,20 @@ const seller_order_status_update = async (req, res) => {
   const { orderId } = req.params;
   const { status, payment } = req.body;
   try {
-    const tempData = await authOrderModel.findById(orderId)
+    const tempData = await authOrderModel.findById(orderId);
     const orderIdCustomer = tempData.orderId;
 
     const order = await authOrderModel.findByIdAndUpdate(orderId, {
       delivery_status: status,
       payment_status: payment,
     });
-    const customerOrderUpdate = await customerOrder.findByIdAndUpdate(orderIdCustomer, {
-      delivery_status: status,
-      payment_status: payment,
-    });
+    const customerOrderUpdate = await customerOrder.findByIdAndUpdate(
+      orderIdCustomer,
+      {
+        delivery_status: status,
+        payment_status: payment,
+      }
+    );
     return responseReturn(res, 200, { message: "status berhasil diperbarui" });
   } catch (error) {
     return responseReturn(res, 500, { error: error.message });
@@ -538,5 +604,5 @@ module.exports = {
   seller_order_status_update,
   update_status_customer_acceptance,
   get_admin_dashboard_data,
-  get_seller_dashboard_data
+  get_seller_dashboard_data,
 };
